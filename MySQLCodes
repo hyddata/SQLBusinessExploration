@@ -1,0 +1,116 @@
+use magist123;
+#Q1. What categories of tech products does Magist have?
+
+SELECT DISTINCT 
+    pct.product_category_name_english,
+    CASE 
+        WHEN pct.product_category_name_english IN (
+            'computers','computers_accessories','pc_gamer',
+            'electronics','consoles_games','tablets_printing_image',
+            'telephony','fixed_telephony','cine_photo'
+        ) THEN 'Tech'
+        ELSE 'Non-Tech'
+    END AS category_type
+FROM products p
+JOIN product_category_name_translation pct
+  ON p.product_category_name = pct.product_category_name
+ORDER BY category_type, pct.product_category_name_english;
+
+#Q2. How many products of these tech categories have been sold (within the time window of the database snapshot)? What percentage does that represent from the overall number of products sold?
+SELECT 
+    pct.product_category_name_english AS tech_category,
+    COUNT(*) AS products_sold,
+    ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM order_items), 2) AS pct_of_total
+FROM order_items oi
+JOIN products p 
+  ON oi.product_id = p.product_id
+JOIN product_category_name_translation pct
+  ON p.product_category_name = pct.product_category_name
+WHERE pct.product_category_name_english IN (
+    'computers','computers_accessories','pc_gamer',
+    'electronics','consoles_games','tablets_printing_image',
+    'telephony','fixed_telephony','cine_photo'
+)
+GROUP BY pct.product_category_name_english
+ORDER BY products_sold DESC;
+
+#Q3. What’s the average price of the products being sold?
+SELECT 
+    CASE 
+        WHEN pct.product_category_name_english IN (
+            'computers','computers_accessories','pc_gamer',
+            'electronics','consoles_games','tablets_printing_image',
+            'telephony','fixed_telephony','cine_photo'
+        ) THEN 'Tech'
+        ELSE 'Non-Tech'
+    END AS category_type,
+    ROUND(AVG(oi.price), 2) AS avg_price_sold
+FROM order_items oi
+JOIN products p ON oi.product_id = p.product_id
+JOIN product_category_name_translation pct
+  ON p.product_category_name = pct.product_category_name
+GROUP BY category_type;
+
+#only tech
+SELECT 
+    pct.product_category_name_english AS tech_category,
+    ROUND(AVG(oi.price), 2) AS avg_price_sold
+FROM order_items oi
+JOIN products p ON oi.product_id = p.product_id
+JOIN product_category_name_translation pct
+  ON p.product_category_name = pct.product_category_name
+WHERE pct.product_category_name_english IN (
+    'computers','computers_accessories','pc_gamer',
+    'electronics','consoles_games','tablets_printing_image',
+    'telephony','fixed_telephony','cine_photo'
+)
+GROUP BY pct.product_category_name_english
+ORDER BY avg_price_sold DESC;
+
+
+#Q4. Are expensive tech products popular?
+
+SELECT
+  SUM(CASE WHEN oi.price >= med.median_price THEN 1 ELSE 0 END) AS expensive_count,
+  SUM(CASE WHEN oi.price <  med.median_price THEN 1 ELSE 0 END) AS cheap_count,
+  COUNT(*) AS total_tech_sales,
+  ROUND(100.0 * SUM(CASE WHEN oi.price >= med.median_price THEN 1 ELSE 0 END) / COUNT(*), 2) AS expensive_pct
+FROM order_items oi
+JOIN products p ON oi.product_id = p.product_id
+JOIN product_category_name_translation pct ON p.product_category_name = pct.product_category_name
+CROSS JOIN (
+  SELECT AVG(s.price) AS median_price
+  FROM (
+    SELECT oi2.price,
+           ROW_NUMBER() OVER (ORDER BY oi2.price) AS rn,
+           COUNT(*) OVER () AS cnt
+    FROM order_items oi2
+    JOIN products p2 ON oi2.product_id = p2.product_id
+    JOIN product_category_name_translation pct2 ON p2.product_category_name = pct2.product_category_name
+    WHERE pct2.product_category_name_english IN (
+      'computers','computers_accessories','pc_gamer',
+      'electronics','consoles_games','tablets_printing_image',
+      'telephony','fixed_telephony','cine_photo'
+    )
+  ) AS s
+  WHERE s.rn IN (FLOOR((s.cnt+1)/2), FLOOR((s.cnt+2)/2))
+) AS med
+WHERE pct.product_category_name_english IN (
+  'computers','computers_accessories','pc_gamer',
+  'electronics','consoles_games','tablets_printing_image',
+  'telephony','fixed_telephony','cine_photo'
+);
+
+
+#delivery days
+
+SELECT 
+    ROUND(AVG(DATEDIFF(order_delivered_customer_date, order_purchase_timestamp)), 2) AS avg_delivery_days
+FROM orders
+WHERE order_delivered_customer_date IS NOT NULL;
+
+# percentage of on time delively
+SELECT 
+    ROUND(100.0 * SUM(CASE WHEN order_delivered_customer_date <= order_estimated_delivery_date THEN 1 ELSE 0 END) / COUNT(*), 2) AS pct_delivered_on_time
+FROM orders
+WHERE order_delivered_customer_date IS NOT NULL;
